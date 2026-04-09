@@ -9,6 +9,24 @@ def log_string(log, string):
     print(string)
 
 
+# metric
+def metric(pred, label):
+    with np.errstate(divide='ignore', invalid='ignore'):
+        mask = np.not_equal(label, 0)
+        mask = mask.astype(np.float32)
+        mask /= np.mean(mask)
+        mae = np.abs(np.subtract(pred, label)).astype(np.float32)
+        rmse = np.square(mae)
+        mape = np.divide(mae, label)
+        mae = np.nan_to_num(mae * mask)
+        mae = np.mean(mae)
+        rmse = np.nan_to_num(rmse * mask)
+        rmse = np.sqrt(np.mean(rmse))
+        mape = np.nan_to_num(mape * mask)
+        mape = np.mean(mape)
+    return mae, rmse, mape
+
+
 def seq2instance(data, P, Q):
     num_step, dims = data.shape
     num_sample = num_step - P - Q + 1
