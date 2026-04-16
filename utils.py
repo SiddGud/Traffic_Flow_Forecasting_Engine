@@ -39,5 +39,31 @@ def seq2instance(data, P, Q):
 
 
 def load_dataset(args):
-    # TODO: wire this up properly
-    pass
+    # Traffic
+    data = np.load(args.traffic_file)
+    Traffic = data['data'][:, :, 0]   # shape: (T, N)
+
+    # train/val/test split
+    num_step = Traffic.shape[0]
+    train_steps = round(args.train_ratio * num_step)
+    test_steps  = round(args.test_ratio  * num_step)
+    val_steps   = num_step - train_steps - test_steps
+
+    train = Traffic[:train_steps]
+    val   = Traffic[train_steps: train_steps + val_steps]
+    test  = Traffic[-test_steps:]
+
+    # normalise using train stats
+    mean = train.mean()
+    std  = train.std()
+    train = (train - mean) / std
+    val   = (val   - mean) / std
+    test  = (test  - mean) / std
+
+    trainX, trainY = seq2instance(train, args.P, args.Q)
+    valX,   valY   = seq2instance(val,   args.P, args.Q)
+    testX,  testY  = seq2instance(test,  args.P, args.Q)
+
+    SE = np.load(args.SE_file)
+
+    return trainX, None, trainY, valX, None, valY, testX, None, testY, SE, mean, std
