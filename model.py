@@ -47,3 +47,14 @@ class Transform(nn.Module):
         value = self.ln(value)
         x = self.ff(value) + value
         # forgot return here, fix later
+
+
+class GRUBlock(nn.Module):
+    def __init__(self, in_features, hidden_dim, out_features):
+        super().__init__()
+        self.gru  = nn.GRU(in_features, hidden_dim, batch_first=True)
+        self.proj = nn.Linear(hidden_dim, out_features)
+
+    def forward(self, x):
+        out, _ = self.gru(x)
+        return self.proj(out)
