@@ -8,7 +8,7 @@ import argparse
 import math
 
 from utils import log_string, load_dataset
-# from model import STGNN  # not written yet
+from model import STGNN
 
 parser = argparse.ArgumentParser()
 # parser.add_argument('--time_slot', type = int, default = 5,
@@ -51,6 +51,40 @@ args = parser.parse_args()
 
 log = open(args.log_file, 'w')
 
-device = torch.device("cuda:5" if torch.cuda.is_available() else "cpu")
+# fixed: was cuda:5 which crashed locally
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 log_string(log, "loading data....")
+
+trainX, trainTE, trainY, valX, valTE, valY, testX, testTE, testY, SE, mean, std = load_dataset(args)
+SE = torch.from_numpy(SE).float().to(device)
+
+log_string(log, "loading end....")
+
+num_nodes = trainX.shape[2]
+
+model = STGNN(
+    num_nodes=num_nodes, in_features=1,
+    out_features=args.K * args.d, num_heads=args.K,
+    head_dim=args.d, num_layers=args.L,
+    gru_hidden=args.K * args.d,
+    P=args.P, Q=args.Q, se_dim=SE.shape[-1]
+).to(device)
+
+criterion = nn.MSELoss()
+optimiser = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+
+
+def res(model, X, Y, mean, std):
+    model.eval() # 评估模式, 这会关闭dropout
+    # it = test_iter.get_iterator()
+    num_samples = X.shape[0]
+    all_preds = []
+    with torch.no_grad():
+        for start in range(0, num_samples, args.batch_size):
+            end = min(start + args.batch_size, num_samples)
+            bX = torch.from_numpy(X[start:end]).float().unsqueeze(-1).to(device)
+            preds = model(bX, SE)
+            all_preds.append(preds.cpu().numpy())
+    all_preds = np.concatenate(all_preds, axis=0) * std + mean
+    return all_preds

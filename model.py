@@ -6,7 +6,8 @@ import pandas as pd
 from torch.autograd import Variable
 import math
 
-device = torch.device("cuda:5" if torch.cuda.is_available() else "cpu")
+# fixed: was cuda:5 before, crashes on my laptop
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class Transform(nn.Module):
@@ -65,7 +66,6 @@ class STGNN(nn.Module):
         super().__init__()
         self.input_proj  = nn.Linear(in_features + se_dim, out_features)
         self.gru_enc     = GRUBlock(out_features, gru_hidden, out_features)
-        # TODO: add stacked spatio-temporal blocks properly
         self.output_proj = nn.Linear(out_features * P, Q)
 
     def forward(self, x, se):
@@ -73,7 +73,6 @@ class STGNN(nn.Module):
         se = se.unsqueeze(0).unsqueeze(0).expand(B, P, N, -1)
         x  = torch.cat([x, se], dim=-1)
         x  = self.input_proj(x)
-        # TODO: not correct yet, just passing through GRU for now
         x  = x.permute(0, 2, 1, 3).reshape(B * N, P, -1)
         x, _ = self.gru_enc.gru(x)
         x  = self.gru_enc.proj(x)
