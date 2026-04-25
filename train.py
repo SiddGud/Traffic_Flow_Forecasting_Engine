@@ -7,7 +7,7 @@ import time
 import argparse
 import math
 
-from utils import log_string, load_dataset
+from utils import log_string, load_dataset, metric
 from model import STGNN
 
 parser = argparse.ArgumentParser()
@@ -50,15 +50,11 @@ parser.add_argument('--log_file', default = 'log(PEMS)',
 args = parser.parse_args()
 
 log = open(args.log_file, 'w')
-
-# fixed: was cuda:5 which crashed locally
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 log_string(log, "loading data....")
-
 trainX, trainTE, trainY, valX, valTE, valY, testX, testTE, testY, SE, mean, std = load_dataset(args)
 SE = torch.from_numpy(SE).float().to(device)
-
 log_string(log, "loading end....")
 
 num_nodes = trainX.shape[2]
@@ -74,6 +70,8 @@ model = STGNN(
 criterion = nn.MSELoss()
 optimiser = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
 
+best_val_mae = float('inf')
+
 
 def res(model, X, Y, mean, std):
     model.eval() # 评估模式, 这会关闭dropout
@@ -87,4 +85,31 @@ def res(model, X, Y, mean, std):
             preds = model(bX, SE)
             all_preds.append(preds.cpu().numpy())
     all_preds = np.concatenate(all_preds, axis=0) * std + mean
-    return all_preds
+    Y_denorm = Y * std + mean
+    return metric(all_preds, Y_denorm)
+
+
+log_string(log, "starting training...")
+for epoch in range(1, args.max_epoch + 1):
+    model.train()
+    epoch_loss = 0.0
+    num_batches = math.ceil(trainX.shape[0] / args.batch_size)
+
+    for start in range(0, trainX.shape[0], args.batch_size):
+        end = min(start + args.batch_size, trainX.shape[0])
+        bX = torch.from_numpy(trainX[start:end]).float().unsqueeze(-1).to(device)
+        bY = torch.from_numpy(trainY[start:end]).float().to(device)
+        optimiser.zero_grad()
+        preds = model(bX, SE)
+        loss = criterion(preds, bY)
+        loss.backward()
+        optimiser.step()
+        epoch_loss += loss.item()
+
+    val_mae, val_rmse, val_mape = res(model, valX, valY, mean, std)
+    log_string(log, f'Epoch {epoch:03d} | loss {epoch_loss/num_batches:.4f} | val MAE {val_mae:.4f} RMSE {val_rmse:.4f} MAPE {val_mape:.4f}')
+
+    if val_mae < best_val_mae:
+        best_val_mae = val_mae
+        torch.save(model.state_dict(), args.model_file + '_best.pt')
+        log_string(log, f'  -> saved checkpoint (val MAE {best_val_mae:.4f})')
