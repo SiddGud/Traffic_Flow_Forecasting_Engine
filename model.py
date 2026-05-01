@@ -6,7 +6,6 @@ import pandas as pd
 from torch.autograd import Variable
 import math
 
-# fixed: was cuda:5 before, crashes on my laptop
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
@@ -47,7 +46,7 @@ class Transform(nn.Module):
 
         value = self.ln(value)
         x = self.ff(value) + value
-        # forgot return here, fix later
+        return self.lnff(x)   # fix: was missing this return the whole time
 
 
 class GRUBlock(nn.Module):
