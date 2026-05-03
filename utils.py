@@ -18,7 +18,7 @@ def metric(pred, label):
         mae = np.abs(np.subtract(pred, label)).astype(np.float32)
         rmse = np.square(mae)
         mape = np.divide(mae, label)
-        mae = np.nan_to_num(mae * mask)
+        mae = np.nan_to_num(mae * mask)  # nan_to_num handles the div-by-zero for zero-flow readings
         mae = np.mean(mae)
         rmse = np.nan_to_num(rmse * mask)
         rmse = np.sqrt(np.mean(rmse))
@@ -41,9 +41,8 @@ def seq2instance(data, P, Q):
 def load_dataset(args):
     # Traffic
     data = np.load(args.traffic_file)
-    Traffic = data['data'][:, :, 0]   # shape: (T, N)
+    Traffic = data['data'][:, :, 0]
 
-    # train/val/test split
     num_step = Traffic.shape[0]
     train_steps = round(args.train_ratio * num_step)
     test_steps  = round(args.test_ratio  * num_step)
@@ -53,7 +52,6 @@ def load_dataset(args):
     val   = Traffic[train_steps: train_steps + val_steps]
     test  = Traffic[-test_steps:]
 
-    # normalise using train stats
     mean = train.mean()
     std  = train.std()
     train = (train - mean) / std
