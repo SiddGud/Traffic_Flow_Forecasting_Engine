@@ -2,9 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-import pandas as pd
-from torch.autograd import Variable
-import math
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -46,7 +43,7 @@ class Transform(nn.Module):
 
         value = self.ln(value)
         x = self.ff(value) + value
-        return self.lnff(x)   # fix: was missing this return the whole time
+        return self.lnff(x)
 
 
 class GRUBlock(nn.Module):
