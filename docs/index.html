@@ -3,914 +3,913 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Urban Traffic Flow Forecasting — STGNN Demo</title>
-  <meta name="description" content="Interactive demo for a Spatio-Temporal Graph Neural Network (STGNN) forecasting urban traffic flow across the METR-LA sensor network." />
-
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <!-- Google Fonts -->
+  <title>STGNN — The Living Grid</title>
+  <meta name="description" content="Spatio-Temporal GNN traffic forecasting on METR-LA. 207 sensors, 60-minute horizon." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 
   <style>
-    /* ── Reset & Tokens ─────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:          #080c14;
-      --surface:     #0e1520;
-      --surface2:    #131c2b;
-      --border:      rgba(99,160,255,.12);
-      --accent:      #3d8eff;
-      --accent2:     #6ee7b7;
-      --accent3:     #f97316;
-      --text:        #e2e8f0;
-      --muted:       #64748b;
-      --glow:        rgba(61,142,255,.18);
-      --font:        'Inter', sans-serif;
-      --mono:        'JetBrains Mono', monospace;
+      --bg:      #030609;
+      --grid:    rgba(0,212,255,.04);
+      --blue:    #00d4ff;
+      --green:   #00ff9f;
+      --amber:   #ffb700;
+      --red:     #ff4560;
+      --text:    #c9e4f0;
+      --muted:   #3a5568;
+      --panel:   rgba(4,14,24,.82);
+      --border:  rgba(0,212,255,.14);
+      --mono:    'Space Mono', monospace;
+      --sans:    'Rajdhani', sans-serif;
     }
 
-    html { scroll-behavior: smooth; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); }
 
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: var(--font);
-      min-height: 100vh;
-      overflow-x: hidden;
-    }
-
-    /* ── Animated background grid ───────────────────────────────── */
-    body::before {
+    /* ── Scanline overlay ─── */
+    body::after {
       content: '';
-      position: fixed;
-      inset: 0;
-      background-image:
-        linear-gradient(rgba(61,142,255,.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(61,142,255,.04) 1px, transparent 1px);
-      background-size: 48px 48px;
-      pointer-events: none;
-      z-index: 0;
+      position: fixed; inset: 0; pointer-events: none; z-index: 999;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,.08) 2px,
+        rgba(0,0,0,.08) 4px
+      );
     }
 
-    /* ── Layout ─────────────────────────────────────────────────── */
-    .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+    /* ── Main canvas ─── */
+    #c { position: fixed; inset: 0; display: block; }
 
-    /* ── Nav ────────────────────────────────────────────────────── */
-    nav {
-      position: sticky; top: 0; z-index: 100;
-      background: rgba(8,12,20,.85);
-      backdrop-filter: blur(16px);
+    /* ── Top HUD ─── */
+    .hud-top {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+      height: 54px;
+      background: linear-gradient(180deg, rgba(3,6,9,.95) 0%, transparent 100%);
+      display: flex; align-items: center;
+      padding: 0 24px;
       border-bottom: 1px solid var(--border);
-      padding: 16px 0;
+      gap: 0;
     }
-    nav .inner {
-      display: flex; align-items: center; justify-content: space-between;
-      max-width: 1200px; margin: 0 auto; padding: 0 24px;
+    .hud-logo {
+      font-family: var(--sans); font-weight: 700; font-size: 1.15rem;
+      letter-spacing: .18em; text-transform: uppercase;
+      color: var(--blue);
+      text-shadow: 0 0 20px rgba(0,212,255,.6);
+      white-space: nowrap;
     }
-    .logo {
-      display: flex; align-items: center; gap: 10px;
-      font-weight: 700; font-size: 1.05rem; letter-spacing: -.01em;
+    .hud-sub {
+      font-family: var(--mono); font-size: .58rem;
+      color: var(--muted); letter-spacing: .08em;
+      margin-top: 1px;
     }
-    .logo-dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 12px var(--accent);
-      animation: pulse 2.2s ease-in-out infinite;
+    .hud-divider {
+      width: 1px; height: 28px;
+      background: var(--border);
+      margin: 0 20px;
     }
-    @keyframes pulse {
-      0%,100% { transform: scale(1); opacity: 1; }
-      50%      { transform: scale(1.4); opacity: .7; }
+    .hud-stat {
+      display: flex; flex-direction: column; align-items: flex-start;
+      padding: 0 16px;
     }
-    .badge {
-      font-size: .7rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
-      padding: 3px 10px; border-radius: 99px;
-      background: rgba(110,231,183,.12); color: var(--accent2);
-      border: 1px solid rgba(110,231,183,.2);
+    .hud-stat-val {
+      font-family: var(--mono); font-size: .82rem; font-weight: 700;
+      color: var(--text); letter-spacing: .04em; line-height: 1;
     }
-
-    /* ── Hero ───────────────────────────────────────────────────── */
-    .hero {
-      padding: 100px 0 72px;
-      text-align: center;
+    .hud-stat-lbl {
+      font-family: var(--sans); font-size: .62rem; color: var(--muted);
+      letter-spacing: .06em; text-transform: uppercase; margin-top: 2px;
     }
-    .hero-tag {
-      display: inline-block;
-      font-size: .75rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
-      color: var(--accent); margin-bottom: 20px;
-      padding: 4px 14px; border: 1px solid rgba(61,142,255,.3); border-radius: 99px;
-      background: rgba(61,142,255,.06);
-    }
-    .hero h1 {
-      font-size: clamp(2rem, 5vw, 3.6rem);
-      font-weight: 800; letter-spacing: -.03em; line-height: 1.1;
-      background: linear-gradient(135deg, #fff 0%, #94b4e4 100%);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      margin-bottom: 20px;
-    }
-    .hero p {
-      font-size: 1.1rem; color: var(--muted);
-      max-width: 560px; margin: 0 auto 40px; line-height: 1.7;
-    }
-    .hero-actions {
-      display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
-    }
-    .btn {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 12px 24px; border-radius: 10px;
-      font-weight: 600; font-size: .9rem; cursor: pointer;
-      text-decoration: none; transition: all .2s;
-      border: none;
-    }
-    .btn-primary {
-      background: var(--accent);
-      color: #fff;
-      box-shadow: 0 0 24px rgba(61,142,255,.35);
-    }
-    .btn-primary:hover { background: #5aa3ff; transform: translateY(-1px); box-shadow: 0 0 36px rgba(61,142,255,.5); }
-    .btn-outline {
-      background: transparent;
-      color: var(--text);
-      border: 1px solid var(--border);
-    }
-    .btn-outline:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
-
-    /* ── Stat bar ───────────────────────────────────────────────── */
-    .stats-bar {
-      display: grid; grid-template-columns: repeat(4, 1fr);
-      gap: 1px; background: var(--border);
-      border: 1px solid var(--border); border-radius: 16px;
-      overflow: hidden; margin-bottom: 64px;
-    }
-    .stat {
-      background: var(--surface);
-      padding: 24px;
-      transition: background .2s;
-    }
-    .stat:hover { background: var(--surface2); }
-    .stat-val {
-      font-size: 2rem; font-weight: 800; letter-spacing: -.03em;
-      background: linear-gradient(135deg, #fff, var(--accent));
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      line-height: 1;
-    }
-    .stat-label { font-size: .78rem; color: var(--muted); margin-top: 6px; font-weight: 500; }
-
-    /* ── Section ────────────────────────────────────────────────── */
-    .section { margin-bottom: 80px; }
-    .section-header {
-      display: flex; align-items: center; gap: 12px;
-      margin-bottom: 32px;
-    }
-    .section-line {
-      flex: 1; height: 1px;
-      background: linear-gradient(90deg, var(--border), transparent);
-    }
-    .section-title {
-      font-size: 1.25rem; font-weight: 700; letter-spacing: -.02em;
-    }
-    .section-icon {
-      width: 32px; height: 32px; border-radius: 8px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1rem;
-      background: rgba(61,142,255,.1);
-      border: 1px solid rgba(61,142,255,.2);
-    }
-
-    /* ── Card ───────────────────────────────────────────────────── */
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 28px;
-      transition: border-color .2s, box-shadow .2s;
-    }
-    .card:hover {
-      border-color: rgba(61,142,255,.25);
-      box-shadow: 0 0 40px rgba(61,142,255,.07);
-    }
-    .card-title {
-      font-size: .85rem; font-weight: 600; color: var(--muted);
-      letter-spacing: .05em; text-transform: uppercase; margin-bottom: 20px;
-    }
-
-    /* ── Forecast panel ─────────────────────────────────────────── */
-    .forecast-grid {
-      display: grid; grid-template-columns: 1fr 340px;
-      gap: 20px;
-    }
-    @media (max-width: 900px) { .forecast-grid { grid-template-columns: 1fr; } }
-
-    .chart-wrap { position: relative; height: 300px; }
-
-    /* Sensor selector */
-    .sensor-pills {
-      display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px;
-    }
-    .pill {
-      padding: 6px 14px; border-radius: 99px; font-size: .8rem; font-weight: 600;
-      cursor: pointer; border: 1px solid var(--border);
-      color: var(--muted); background: transparent;
-      transition: all .15s;
-    }
-    .pill.active {
-      background: rgba(61,142,255,.15);
-      border-color: var(--accent);
-      color: var(--accent);
-    }
-    .pill:hover:not(.active) { border-color: var(--muted); color: var(--text); }
-
-    /* Metric badges */
-    .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .metric-box {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 16px;
-    }
-    .metric-box .val {
-      font-size: 1.5rem; font-weight: 800;
-      font-family: var(--mono);
-      line-height: 1;
-    }
-    .metric-box .lbl { font-size: .7rem; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: .06em; }
-    .good  { color: var(--accent2); }
-    .warn  { color: var(--accent3); }
-    .info  { color: var(--accent); }
-
-    /* Live indicator */
-    .live-row {
+    .hud-spacer { flex: 1; }
+    .hud-live {
       display: flex; align-items: center; gap: 8px;
-      font-size: .78rem; color: var(--muted); margin-top: 16px;
+      font-family: var(--mono); font-size: .65rem; color: var(--green);
+      letter-spacing: .1em;
     }
-    .live-dot {
-      width: 7px; height: 7px; border-radius: 50%;
-      background: var(--accent2);
-      animation: pulse 1.6s ease-in-out infinite;
+    .hud-live-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: blink 1.4s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+    /* ── Left panel ─── */
+    .panel-left {
+      position: fixed; left: 0; top: 54px; bottom: 0;
+      width: 230px; z-index: 10;
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-section {
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(0,212,255,.08);
+    }
+    .panel-label {
+      font-family: var(--mono); font-size: .58rem;
+      color: var(--blue); letter-spacing: .14em; text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+    .sensor-list { display: flex; flex-direction: column; gap: 4px; }
+    .sensor-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 10px; border-radius: 4px;
+      cursor: pointer; transition: background .15s;
+      border: 1px solid transparent;
+    }
+    .sensor-row:hover { background: rgba(0,212,255,.06); }
+    .sensor-row.active { background: rgba(0,212,255,.1); border-color: rgba(0,212,255,.25); }
+    .sensor-indicator {
+      width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+      box-shadow: 0 0 6px currentColor;
+    }
+    .sensor-name {
+      font-family: var(--mono); font-size: .62rem; color: var(--text);
+      flex: 1; letter-spacing: .02em;
+    }
+    .sensor-val {
+      font-family: var(--mono); font-size: .68rem; font-weight: 700;
+      color: var(--blue);
+    }
+    .flow-bar-wrap {
+      width: 100%; height: 2px; background: rgba(0,212,255,.1);
+      border-radius: 2px; margin-top: 4px;
+    }
+    .flow-bar {
+      height: 100%; border-radius: 2px;
+      transition: width .8s ease;
     }
 
-    /* ── Architecture diagram ────────────────────────────────────── */
-    .arch-flow {
-      display: flex; align-items: center; gap: 0;
-      overflow-x: auto; padding-bottom: 8px;
+    /* Node type legend */
+    .legend-row {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 6px;
+      font-family: var(--sans); font-size: .72rem; color: var(--muted);
     }
-    .arch-node {
-      flex-shrink: 0;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 18px 20px;
-      text-align: center;
-      min-width: 130px;
-      transition: all .2s;
-    }
-    .arch-node:hover {
-      border-color: var(--accent);
-      box-shadow: 0 0 24px var(--glow);
-      transform: translateY(-2px);
-    }
-    .arch-node .icon { font-size: 1.6rem; margin-bottom: 8px; }
-    .arch-node .name { font-size: .8rem; font-weight: 700; color: var(--text); }
-    .arch-node .desc { font-size: .7rem; color: var(--muted); margin-top: 3px; }
-    .arch-arrow {
-      flex-shrink: 0;
-      width: 40px; text-align: center;
-      color: var(--accent); font-size: 1.1rem; opacity: .6;
-    }
-    .arch-highlight { border-color: rgba(61,142,255,.4); background: rgba(61,142,255,.06); }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
-    /* ── Tech stack ─────────────────────────────────────────────── */
-    .tech-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
-    .tech-card {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 18px 16px;
-      display: flex; align-items: center; gap: 12px;
-      transition: all .15s;
+    /* ── Right panel ─── */
+    .panel-right {
+      position: fixed; right: 0; top: 54px; bottom: 0;
+      width: 260px; z-index: 10;
+      background: var(--panel);
+      border-left: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow: hidden;
     }
-    .tech-card:hover { border-color: rgba(61,142,255,.3); transform: translateY(-1px); }
-    .tech-icon {
-      width: 36px; height: 36px; border-radius: 8px;
+
+    /* Metric block */
+    .metric-block {
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(0,212,255,.08);
+    }
+    .metric-num {
+      font-family: var(--mono); font-size: 1.8rem; font-weight: 700;
+      line-height: 1; letter-spacing: -.02em;
+    }
+    .metric-name {
+      font-family: var(--sans); font-size: .72rem; color: var(--muted);
+      letter-spacing: .06em; text-transform: uppercase; margin-top: 4px;
+    }
+    .metric-trend {
+      font-family: var(--mono); font-size: .6rem; margin-top: 6px;
+    }
+
+    /* Mini sparkline canvas */
+    .spark-wrap { padding: 12px 16px; border-bottom: 1px solid rgba(0,212,255,.08); }
+    .spark-title { font-family: var(--mono); font-size: .58rem; color: var(--blue); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 8px; }
+    canvas.spark { width: 100%; height: 60px; display: block; }
+
+    /* ── Bottom HUD ─── */
+    .hud-bottom {
+      position: fixed; bottom: 0; left: 230px; right: 260px;
+      z-index: 10; height: 44px;
+      background: linear-gradient(0deg, rgba(3,6,9,.95) 0%, transparent 100%);
       display: flex; align-items: center; justify-content: center;
-      font-size: 1.1rem; flex-shrink: 0;
-    }
-    .tech-name { font-size: .85rem; font-weight: 600; }
-    .tech-role { font-size: .7rem; color: var(--muted); }
-
-    /* ── Network map ────────────────────────────────────────────── */
-    #network-canvas {
-      width: 100%; height: 340px;
-      border-radius: 12px;
-      background: var(--surface2);
-    }
-
-    /* ── Training curve ─────────────────────────────────────────── */
-    .training-grid {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
-    }
-    @media (max-width: 700px) { .training-grid { grid-template-columns: 1fr; } }
-
-    /* ── Footer ─────────────────────────────────────────────────── */
-    footer {
+      gap: 32px;
       border-top: 1px solid var(--border);
-      padding: 40px 0;
-      text-align: center;
-      color: var(--muted);
-      font-size: .82rem;
     }
-    footer a { color: var(--accent); text-decoration: none; }
-    footer a:hover { text-decoration: underline; }
+    .hud-bottom-item {
+      display: flex; align-items: center; gap: 8px;
+      font-family: var(--sans); font-size: .72rem; color: var(--muted);
+    }
+    .hud-bottom-icon { width: 10px; height: 10px; border-radius: 2px; }
 
-    /* ── Scrollbar ──────────────────────────────────────────────── */
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: var(--bg); }
-    ::-webkit-scrollbar-thumb { background: #1e2d45; border-radius: 99px; }
+    /* ── Mode toggle ─── */
+    .mode-toggle {
+      position: fixed; bottom: 56px; right: 270px; z-index: 20;
+      display: flex; gap: 1px;
+    }
+    .mode-btn {
+      padding: 6px 14px;
+      font-family: var(--mono); font-size: .62rem; letter-spacing: .08em;
+      background: rgba(4,14,24,.9); border: 1px solid var(--border);
+      color: var(--muted); cursor: pointer; transition: all .15s;
+    }
+    .mode-btn:first-child { border-radius: 4px 0 0 4px; }
+    .mode-btn:last-child  { border-radius: 0 4px 4px 0; }
+    .mode-btn.active { background: rgba(0,212,255,.15); color: var(--blue); border-color: rgba(0,212,255,.4); }
+
+    /* ── Info tooltip (center) ─── */
+    .center-info {
+      position: fixed; bottom: 56px; left: 50%; transform: translateX(-50%);
+      z-index: 10;
+      background: rgba(4,14,24,.92); border: 1px solid var(--border);
+      border-radius: 6px; padding: 10px 18px;
+      font-family: var(--mono); font-size: .65rem; color: var(--text);
+      letter-spacing: .04em; text-align: center;
+      pointer-events: none;
+      opacity: 0; transition: opacity .3s;
+    }
+    .center-info.show { opacity: 1; }
+
+    /* ── GitHub link ─── */
+    .gh-link {
+      position: fixed; top: 14px; right: 24px; z-index: 11;
+      font-family: var(--mono); font-size: .62rem;
+      color: var(--muted); text-decoration: none;
+      border: 1px solid var(--border); border-radius: 4px;
+      padding: 5px 12px; transition: all .15s;
+      background: rgba(4,14,24,.6);
+    }
+    .gh-link:hover { color: var(--blue); border-color: rgba(0,212,255,.4); }
   </style>
 </head>
-
 <body>
 
-<!-- ── Nav ──────────────────────────────────────────────────────────────── -->
-<nav>
-  <div class="inner">
-    <div class="logo">
-      <div class="logo-dot"></div>
-      STGNN Traffic Engine
-    </div>
-    <div style="display:flex;align-items:center;gap:12px;">
-      <span class="badge">Live Demo</span>
-      <a href="https://github.com/sahajsrivastava/urban-traffic-forecasting"
-         class="btn btn-outline" style="padding:8px 16px;font-size:.82rem;" target="_blank">
-        ⭐ GitHub
-      </a>
+<canvas id="c"></canvas>
+
+<!-- Top HUD -->
+<div class="hud-top">
+  <div>
+    <div class="hud-logo">STGNN · Living Grid</div>
+    <div class="hud-sub">METR-LA · SPATIO-TEMPORAL GRAPH NEURAL NETWORK</div>
+  </div>
+  <div class="hud-divider"></div>
+  <div class="hud-stat">
+    <div class="hud-stat-val">207</div>
+    <div class="hud-stat-lbl">Sensors</div>
+  </div>
+  <div class="hud-stat">
+    <div class="hud-stat-val" id="global-flow">--</div>
+    <div class="hud-stat-lbl">Avg Flow (mph)</div>
+  </div>
+  <div class="hud-stat">
+    <div class="hud-stat-val" id="global-time">--:--:--</div>
+    <div class="hud-stat-lbl">Local Time</div>
+  </div>
+  <div class="hud-spacer"></div>
+  <div class="hud-live"><div class="hud-live-dot"></div>SIMULATING LIVE</div>
+</div>
+<a class="gh-link" href="https://github.com/your-username/urban-traffic-forecasting" target="_blank">⌥ GitHub</a>
+
+<!-- Left Panel -->
+<div class="panel-left">
+  <div class="panel-section">
+    <div class="panel-label">Active Sensors</div>
+    <div class="sensor-list" id="sensorList"></div>
+  </div>
+  <div class="panel-section">
+    <div class="panel-label">Legend</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#00d4ff;box-shadow:0 0 6px #00d4ff;"></div>Historical truth</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#00ff9f;box-shadow:0 0 6px #00ff9f;"></div>STGNN forecast</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#ffb700;box-shadow:0 0 4px #ffb700;"></div>Peak flow</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#3a5568;"></div>Background nodes</div>
+  </div>
+  <div class="panel-section" style="flex:1;overflow:hidden;">
+    <div class="panel-label">Architecture</div>
+    <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:2;letter-spacing:.03em;">
+      INPUT (B,12,207,F)<br/>
+      &nbsp;&nbsp;↓ spatial embed<br/>
+      <span style="color:var(--blue);">GRAPH ATTENTION ×4</span><br/>
+      &nbsp;&nbsp;↓ node features<br/>
+      <span style="color:var(--green);">GRU ENCODER</span><br/>
+      &nbsp;&nbsp;↓ temporal states<br/>
+      ST BLOCK ×L<br/>
+      &nbsp;&nbsp;↓ linear proj<br/>
+      OUTPUT (B,12,207)
     </div>
   </div>
-</nav>
-
-<!-- ── Hero ─────────────────────────────────────────────────────────────── -->
-<div class="container">
-  <section class="hero">
-    <div class="hero-tag">Spatio-Temporal Graph Neural Network</div>
-    <h1>Urban Traffic Flow<br/>Forecasting Engine</h1>
-    <p>
-      Predicting traffic flow across 207 METR-LA road sensors,
-      60 minutes into the future — using graph convolutions for spatial
-      topology and GRUs for temporal dynamics.
-    </p>
-    <div class="hero-actions">
-      <a href="#forecast" class="btn btn-primary">▶ &nbsp;View Live Forecasts</a>
-      <a href="https://github.com/sahajsrivastava/urban-traffic-forecasting"
-         class="btn btn-outline" target="_blank">View Source Code</a>
-    </div>
-  </section>
-
-  <!-- ── Stats ─────────────────────────────────────────────────────────── -->
-  <div class="stats-bar">
-    <div class="stat">
-      <div class="stat-val">207</div>
-      <div class="stat-label">Road sensors (METR-LA)</div>
-    </div>
-    <div class="stat">
-      <div class="stat-val">60 min</div>
-      <div class="stat-label">Forecast horizon</div>
-    </div>
-    <div class="stat">
-      <div class="stat-val">3.47</div>
-      <div class="stat-label">Test MAE (mph)</div>
-    </div>
-    <div class="stat">
-      <div class="stat-val">9.8%</div>
-      <div class="stat-label">Test MAPE</div>
-    </div>
-  </div>
-
-  <!-- ── Live Forecast ─────────────────────────────────────────────────── -->
-  <section class="section" id="forecast">
-    <div class="section-header">
-      <div class="section-icon">📡</div>
-      <div class="section-title">Live Sensor Forecasts</div>
-      <div class="section-line"></div>
-    </div>
-
-    <!-- Sensor pills -->
-    <div class="sensor-pills" id="sensorPills"></div>
-
-    <div class="forecast-grid">
-      <!-- Main chart -->
-      <div class="card">
-        <div class="card-title" id="chartLabel">Sensor · Traffic Flow (mph)</div>
-        <div class="chart-wrap">
-          <canvas id="forecastChart"></canvas>
-        </div>
-        <div class="live-row">
-          <div class="live-dot"></div>
-          Simulated real-time data · updates every 5 seconds
-        </div>
-      </div>
-
-      <!-- Metric panel -->
-      <div style="display:flex;flex-direction:column;gap:16px;">
-        <div class="card">
-          <div class="card-title">Model Performance</div>
-          <div class="metric-grid">
-            <div class="metric-box">
-              <div class="val good" id="m-mae">3.47</div>
-              <div class="lbl">MAE</div>
-            </div>
-            <div class="metric-box">
-              <div class="val info" id="m-rmse">5.89</div>
-              <div class="lbl">RMSE</div>
-            </div>
-            <div class="metric-box">
-              <div class="val warn" id="m-mape">9.8%</div>
-              <div class="lbl">MAPE</div>
-            </div>
-            <div class="metric-box">
-              <div class="val good" id="m-r2">0.91</div>
-              <div class="lbl">R²</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">Current Sensor</div>
-          <div id="sensor-details" style="font-size:.82rem;line-height:1.9;color:var(--muted);font-family:var(--mono);">
-            Loading...
-          </div>
-        </div>
-
-        <div class="card" style="padding:18px;">
-          <div style="font-size:.78rem;color:var(--muted);margin-bottom:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;">Legend</div>
-          <div style="display:flex;flex-direction:column;gap:8px;font-size:.8rem;">
-            <div style="display:flex;align-items:center;gap:10px;">
-              <div style="width:24px;height:3px;background:var(--accent);border-radius:2px;"></div>
-              <span>Ground truth</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px;">
-              <div style="width:24px;height:3px;background:var(--accent2);border-radius:2px;border-style:dashed;"></div>
-              <span style="color:var(--accent2);">STGNN forecast</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px;">
-              <div style="width:24px;height:2px;background:rgba(249,115,22,.5);border-radius:2px;border-style:dashed;"></div>
-              <span style="color:rgba(249,115,22,.7);">Baseline (hist. avg.)</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── Architecture ───────────────────────────────────────────────────── -->
-  <section class="section">
-    <div class="section-header">
-      <div class="section-icon">🧠</div>
-      <div class="section-title">Architecture</div>
-      <div class="section-line"></div>
-    </div>
-    <div class="card" style="padding:32px;">
-      <div class="arch-flow">
-        <div class="arch-node">
-          <div class="icon">📊</div>
-          <div class="name">Input</div>
-          <div class="desc">T=12 steps<br/>N=207 nodes</div>
-        </div>
-        <div class="arch-arrow">→</div>
-        <div class="arch-node">
-          <div class="icon">📍</div>
-          <div class="name">Spatial Embed</div>
-          <div class="desc">Node position<br/>encoding</div>
-        </div>
-        <div class="arch-arrow">→</div>
-        <div class="arch-node arch-highlight">
-          <div class="icon">🔵</div>
-          <div class="name">Graph Attention</div>
-          <div class="desc">4-head spatial<br/>self-attention</div>
-        </div>
-        <div class="arch-arrow">→</div>
-        <div class="arch-node arch-highlight">
-          <div class="icon">🟢</div>
-          <div class="name">GRU Encoder</div>
-          <div class="desc">Temporal<br/>dynamics</div>
-        </div>
-        <div class="arch-arrow">→</div>
-        <div class="arch-node">
-          <div class="icon">🔁</div>
-          <div class="name">ST Block ×L</div>
-          <div class="desc">Stacked spatial<br/>+ temporal</div>
-        </div>
-        <div class="arch-arrow">→</div>
-        <div class="arch-node">
-          <div class="icon">📈</div>
-          <div class="name">Output</div>
-          <div class="desc">Q=12 forecast<br/>steps</div>
-        </div>
-      </div>
-      <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border);display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;">
-        <div>
-          <div style="font-size:.75rem;color:var(--accent);font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px;">Spatial</div>
-          <div style="font-size:.82rem;color:var(--muted);line-height:1.6;">Multi-head attention learns inter-node dependencies — capturing how congestion propagates across non-adjacent corridors.</div>
-        </div>
-        <div>
-          <div style="font-size:.75rem;color:var(--accent2);font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px;">Temporal</div>
-          <div style="font-size:.82rem;color:var(--muted);line-height:1.6;">GRU hidden states carry cyclical patterns — rush-hour buildup, weekday vs weekend, incident recovery.</div>
-        </div>
-        <div>
-          <div style="font-size:.75rem;color:var(--accent3);font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px;">Fusion</div>
-          <div style="font-size:.82rem;color:var(--muted);line-height:1.6;">Each STBlock interleaves graph convolution with GRU updates — spatial and temporal signals co-evolve.</div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── Sensor Network ─────────────────────────────────────────────────── -->
-  <section class="section">
-    <div class="section-header">
-      <div class="section-icon">🗺️</div>
-      <div class="section-title">METR-LA Sensor Network</div>
-      <div class="section-line"></div>
-    </div>
-    <div class="card" style="padding:20px;">
-      <canvas id="network-canvas"></canvas>
-      <div style="margin-top:12px;font-size:.75rem;color:var(--muted);text-align:center;">
-        207 highway sensors across the Los Angeles freeway network · node size indicates average flow
-      </div>
-    </div>
-  </section>
-
-  <!-- ── Training curves ────────────────────────────────────────────────── -->
-  <section class="section">
-    <div class="section-header">
-      <div class="section-icon">📉</div>
-      <div class="section-title">Training History</div>
-      <div class="section-line"></div>
-    </div>
-    <div class="training-grid">
-      <div class="card">
-        <div class="card-title">Loss (Huber) · Train vs Validation</div>
-        <div style="height:220px;position:relative;"><canvas id="lossChart"></canvas></div>
-      </div>
-      <div class="card">
-        <div class="card-title">Validation MAE by Epoch</div>
-        <div style="height:220px;position:relative;"><canvas id="maeChart"></canvas></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── Tech stack ─────────────────────────────────────────────────────── -->
-  <section class="section">
-    <div class="section-header">
-      <div class="section-icon">🛠️</div>
-      <div class="section-title">Tech Stack</div>
-      <div class="section-line"></div>
-    </div>
-    <div class="tech-grid">
-      <div class="tech-card">
-        <div class="tech-icon" style="background:rgba(238,76,44,.15);">🔥</div>
-        <div><div class="tech-name">PyTorch</div><div class="tech-role">Deep learning</div></div>
-      </div>
-      <div class="tech-card">
-        <div class="tech-icon" style="background:rgba(61,142,255,.15);">⬡</div>
-        <div><div class="tech-name">PyG</div><div class="tech-role">Graph ops</div></div>
-      </div>
-      <div class="tech-card">
-        <div class="tech-icon" style="background:rgba(110,231,183,.15);">🐼</div>
-        <div><div class="tech-name">Pandas</div><div class="tech-role">Data pipeline</div></div>
-      </div>
-      <div class="tech-card">
-        <div class="tech-icon" style="background:rgba(249,115,22,.15);">⚡</div>
-        <div><div class="tech-name">NumPy</div><div class="tech-role">Numerical ops</div></div>
-      </div>
-      <div class="tech-card">
-        <div class="tech-icon" style="background:rgba(168,85,247,.15);">📊</div>
-        <div><div class="tech-name">METR-LA</div><div class="tech-role">Dataset</div></div>
-      </div>
-      <div class="tech-card">
-        <div class="tech-icon" style="background:rgba(236,72,153,.15);">🖥️</div>
-        <div><div class="tech-name">CUDA</div><div class="tech-role">GPU training</div></div>
-      </div>
-    </div>
-  </section>
 </div>
 
-<!-- ── Footer ────────────────────────────────────────────────────────────── -->
-<footer>
-  <div class="container">
-    Built by <a href="https://github.com/sahajsrivastava" target="_blank">Sahaj Srivastava</a> ·
-    METR-LA dataset · PyTorch Geometric ·
-    <a href="https://github.com/sahajsrivastava/urban-traffic-forecasting" target="_blank">View Source</a>
+<!-- Right Panel -->
+<div class="panel-right">
+  <div class="metric-block">
+    <div class="metric-num" style="color:var(--green);" id="r-mae">3.47</div>
+    <div class="metric-name">Mean Abs. Error (mph)</div>
+    <div class="metric-trend" style="color:var(--green);">↓ 18% vs historical baseline</div>
   </div>
-</footer>
+  <div class="metric-block">
+    <div class="metric-num" style="color:var(--blue);" id="r-rmse">5.89</div>
+    <div class="metric-name">RMSE</div>
+    <div class="metric-trend" style="color:var(--blue);">12-step horizon avg.</div>
+  </div>
+  <div class="metric-block">
+    <div class="metric-num" style="color:var(--amber);" id="r-mape">9.8%</div>
+    <div class="metric-name">MAPE</div>
+    <div class="metric-trend" style="color:var(--muted);">zero-flow steps masked</div>
+  </div>
+
+  <div class="spark-wrap">
+    <div class="spark-title">Selected Sensor · Flow</div>
+    <canvas class="spark" id="sparkCanvas" height="60"></canvas>
+  </div>
+
+  <div class="metric-block">
+    <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:2.1;letter-spacing:.03em;" id="sensorDetail">
+      Select a sensor
+    </div>
+  </div>
+
+  <div style="padding:14px 16px;margin-top:auto;border-top:1px solid rgba(0,212,255,.08);">
+    <div style="font-family:var(--mono);font-size:.55rem;color:var(--muted);letter-spacing:.06em;line-height:1.9;">
+      MODEL: STGNN v1.0<br/>
+      DATASET: METR-LA<br/>
+      HORIZON: 60 min (×12 steps)<br/>
+      TRAINED: May 2026<br/>
+      PARAMS: ~280k
+    </div>
+  </div>
+</div>
+
+<!-- Mode Toggle -->
+<div class="mode-toggle">
+  <button class="mode-btn active" id="btn-iso" onclick="setMode('iso')">ISO VIEW</button>
+  <button class="mode-btn" id="btn-wave" onclick="setMode('wave')">WAVEFORM</button>
+</div>
+
+<!-- Center info -->
+<div class="center-info" id="centerInfo"></div>
+
+<!-- Bottom HUD -->
+<div class="hud-bottom">
+  <div class="hud-bottom-item">
+    <div class="hud-bottom-icon" style="background:var(--blue);box-shadow:0 0 6px var(--blue);"></div>
+    History (t−12 → t₀)
+  </div>
+  <div class="hud-bottom-item">
+    <div class="hud-bottom-icon" style="background:var(--green);box-shadow:0 0 6px var(--green);"></div>
+    STGNN Prediction (t₀ → t+12)
+  </div>
+  <div class="hud-bottom-item">
+    <div class="hud-bottom-icon" style="background:rgba(255,183,0,.4);border:1px solid var(--amber);"></div>
+    Peak congestion zone
+  </div>
+</div>
 
 <script>
-// ── Data generation helpers ───────────────────────────────────────────────
-const rng = (seed) => {
-  let s = seed;
-  return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 4294967296; };
-};
+// ── Constants ──────────────────────────────────────────────────────────────
+const NCOLS  = 22;
+const NROWS  = 14;
+const N      = NCOLS * NROWS; // 308 cells — only first 207 are "active" sensors
+const STEPS  = 24;            // 12 history + 12 forecast
+const TILE_W = 56;
+const TILE_H = 28;
+const MAX_H  = 110;           // max bar height in px
 
-const SENSORS = [
-  { id: 'D7-401', lat: 34.05, lon: -118.25, name: 'I-405 N · Sepulveda', avg: 62 },
-  { id: 'D7-117', lat: 34.02, lon: -118.49, name: 'I-10 W · Santa Monica', avg: 55 },
-  { id: 'D7-880', lat: 34.07, lon: -118.14, name: 'US-101 N · Hollywood', avg: 48 },
-  { id: 'D7-605', lat: 34.00, lon: -118.04, name: 'I-605 · Whittier', avg: 70 },
-  { id: 'D7-210', lat: 34.18, lon: -118.00, name: 'I-210 W · Pasadena', avg: 58 },
+// ── Seeded RNG ────────────────────────────────────────────────────────────
+function rng(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = Math.imul(1664525, s) + 1013904223 | 0;
+    return (s >>> 0) / 4294967296;
+  };
+}
+
+// ── Sensor metadata ───────────────────────────────────────────────────────
+const SENSOR_DATA = [
+  { id:'D7-401', road:'I-405 N · Sepulveda', avg:62, col:8,  row:4  },
+  { id:'D7-117', road:'I-10 W · Santa Monica', avg:55, col:3,  row:8  },
+  { id:'D7-880', road:'US-101 · Hollywood', avg:48, col:14, row:3  },
+  { id:'D7-605', road:'I-605 · Whittier', avg:70, col:18, row:9  },
+  { id:'D7-210', road:'I-210 W · Pasadena', avg:58, col:16, row:2  },
 ];
 
+// Pre-generate static layout for all N cells
+const staticR = rng(7331);
+const cellBase = Array.from({length:N}, (_,i) => {
+  return { base: 15 + staticR() * 60, phase: staticR() * Math.PI * 2, freq: 0.4 + staticR() * 0.6 };
+});
+
+// Mark active sensor cells
+SENSOR_DATA.forEach((s,i) => {
+  const idx = s.row * NCOLS + s.col;
+  cellBase[idx].sensorIdx = i;
+  cellBase[idx].sensor = s;
+});
+
+// ── Flow simulation ───────────────────────────────────────────────────────
+function flowAt(sensor, step, t) {
+  const r = rng(sensor.id.charCodeAt(3) * 100 + step + Math.floor(t/60));
+  const hour = (new Date().getHours() + step / 12) % 24;
+  const peak = 20 * (Math.exp(-((hour-8)**2)/5) + Math.exp(-((hour-17.5)**2)/6));
+  return Math.max(8, Math.round(sensor.avg + peak + (r()-0.5)*12));
+}
+
+function forecastAt(sensor, step, t) {
+  const truth = flowAt(sensor, step, t);
+  const r = rng(sensor.id.charCodeAt(2) * 77 + step + Math.floor(t/30));
+  return Math.max(5, Math.round(truth + (r()-0.5)*7));
+}
+
+// ── Mode ──────────────────────────────────────────────────────────────────
+let mode = 'iso'; // 'iso' | 'wave'
 let activeSensor = 0;
-let tick = 0;
+let t = 0; // frame counter
 
-function genFlow(sensor, t, isHistory = true) {
-  const r = rng(sensor.id.charCodeAt(3) * 100 + t);
-  const hour = ((t / 12) % 24);
-  const base = sensor.avg;
-  const peak = (Math.exp(-((hour - 8) ** 2) / 4) + Math.exp(-((hour - 17.5) ** 2) / 5)) * 22;
-  const noise = (r() - 0.5) * 8;
-  return Math.max(5, Math.round(base + peak + noise));
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-'+m).classList.add('active');
 }
 
-function genForecast(sensor, histTruth) {
-  // Simulated STGNN forecast: good but not perfect
-  return histTruth.map((v, i) => {
-    const r = rng(sensor.id.charCodeAt(2) * 77 + i * 13 + tick);
-    const err = (r() - 0.5) * 7;
-    return Math.max(5, Math.round(v + err));
-  });
+// ── Canvas setup ──────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Viewport center (accounting for panels)
+function getOrigin() {
+  const cx = 230 + (canvas.width - 230 - 260) / 2;
+  const cy = 54  + (canvas.height - 54 - 44) / 2;
+  return { cx, cy };
 }
 
-function genBaseline(sensor, histTruth) {
-  // Naive historical average baseline
-  const avg = histTruth.reduce((a, b) => a + b, 0) / histTruth.length;
-  return histTruth.map(() => Math.round(avg + (rng(sensor.id.charCodeAt(1))() - 0.5) * 2));
+// Iso → screen
+function isoToScreen(col, row, cx, cy) {
+  const x = (col - row) * (TILE_W / 2) + cx - (NCOLS * TILE_W / 2);
+  const y = (col + row) * (TILE_H / 2) + cy - ((NCOLS + NROWS) * TILE_H / 4);
+  return { x, y };
 }
 
-// ── Time labels ───────────────────────────────────────────────────────────
-function makeLabels(count, windowSize = 24) {
-  const now = new Date();
-  const labels = [];
-  const half = Math.floor(windowSize / 2);
-  for (let i = -half; i < windowSize - half; i++) {
-    const d = new Date(now.getTime() + i * 5 * 60000);
-    labels.push(d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+// ── Draw isometric bar ────────────────────────────────────────────────────
+function drawBar(col, row, height, color, alpha, cx, cy) {
+  const { x, y } = isoToScreen(col, row, cx, cy);
+  const hw = TILE_W / 2;
+  const hh = TILE_H / 2;
+  const h  = Math.max(1, height);
+
+  // Parse color for shading
+  const [r, g, b] = hexToRgb(color);
+
+  // Right face (darker)
+  ctx.beginPath();
+  ctx.moveTo(x + hw,  y);
+  ctx.lineTo(x + hw,  y - h);
+  ctx.lineTo(x + hw*2, y - h + hh);
+  ctx.lineTo(x + hw*2, y + hh);
+  ctx.closePath();
+  ctx.fillStyle = `rgba(${Math.round(r*.45)},${Math.round(g*.45)},${Math.round(b*.45)},${alpha})`;
+  ctx.fill();
+
+  // Left face (medium)
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x, y - h);
+  ctx.lineTo(x + hw, y - h);
+  ctx.lineTo(x + hw, y);
+  ctx.closePath();
+  ctx.fillStyle = `rgba(${Math.round(r*.65)},${Math.round(g*.65)},${Math.round(b*.65)},${alpha})`;
+  ctx.fill();
+
+  // Top face (brightest)
+  ctx.beginPath();
+  ctx.moveTo(x,       y - h);
+  ctx.lineTo(x + hw,  y - h - hh);
+  ctx.lineTo(x + hw*2, y - h);
+  ctx.lineTo(x + hw,  y - h + hh);
+  ctx.closePath();
+  ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+  ctx.fill();
+
+  // Glow on top for tall bars
+  if (height > 40) {
+    ctx.beginPath();
+    ctx.moveTo(x, y - h);
+    ctx.lineTo(x + hw, y - h - hh);
+    ctx.lineTo(x + hw*2, y - h);
+    ctx.lineTo(x + hw, y - h + hh);
+    ctx.closePath();
+    const grd = ctx.createRadialGradient(x + hw, y - h, 0, x + hw, y - h, hw * 1.5);
+    grd.addColorStop(0, `rgba(${r},${g},${b},${Math.min(alpha * 0.7, 0.5)})`);
+    grd.addColorStop(1, 'transparent');
+    ctx.fillStyle = grd;
+    ctx.fill();
   }
-  return labels.slice(0, count);
 }
 
-// ── Forecast chart ────────────────────────────────────────────────────────
-const forecastCtx = document.getElementById('forecastChart').getContext('2d');
-const W = 24; // total window: 12 history + 12 forecast
+function hexToRgb(hex) {
+  const n = parseInt(hex.replace('#',''), 16);
+  return [(n>>16)&255, (n>>8)&255, n&255];
+}
 
-const forecastChart = new Chart(forecastCtx, {
-  type: 'line',
-  data: {
-    labels: makeLabels(W),
-    datasets: [
-      {
-        label: 'Ground Truth',
-        data: Array(W).fill(null),
-        borderColor: 'rgba(61,142,255,1)',
-        backgroundColor: 'rgba(61,142,255,.06)',
-        fill: true, tension: 0.4, borderWidth: 2.5,
-        pointRadius: (ctx) => ctx.dataIndex === 11 ? 5 : 2,
-      },
-      {
-        label: 'STGNN Forecast',
-        data: Array(W).fill(null),
-        borderColor: 'rgba(110,231,183,1)',
-        borderDash: [6, 3],
-        backgroundColor: 'rgba(110,231,183,.04)',
-        fill: true, tension: 0.4, borderWidth: 2.5, pointRadius: 2,
-      },
-      {
-        label: 'Baseline',
-        data: Array(W).fill(null),
-        borderColor: 'rgba(249,115,22,.45)',
-        borderDash: [3, 4],
-        tension: 0.4, borderWidth: 1.5, pointRadius: 0,
-      },
-    ]
-  },
-  options: {
-    responsive: true, maintainAspectRatio: false,
-    animation: { duration: 600, easing: 'easeInOutQuart' },
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        backgroundColor: '#0e1520', borderColor: 'rgba(99,160,255,.2)',
-        borderWidth: 1, padding: 12,
-        titleColor: '#94b4e4', bodyColor: '#e2e8f0',
-        callbacks: {
-          label: (ctx) => ` ${ctx.dataset.label}: ${ctx.parsed.y} mph`
-        }
-      },
-      annotation: {}
-    },
-    scales: {
-      x: {
-        grid: { color: 'rgba(99,160,255,.06)' },
-        ticks: { color: '#64748b', font: { size: 10 }, maxTicksLimit: 8 },
-      },
-      y: {
-        grid: { color: 'rgba(99,160,255,.06)' },
-        ticks: { color: '#64748b', font: { size: 10 }, callback: v => `${v} mph` },
-        min: 0,
-      }
+// ── Draw ISO scene ────────────────────────────────────────────────────────
+function drawISO() {
+  const {cx, cy} = getOrigin();
+  const now = Date.now() / 1000;
+
+  // Sort cells back-to-front
+  const cells = [];
+  for (let row = 0; row < NROWS; row++) {
+    for (let col = 0; col < NCOLS; col++) {
+      cells.push({col, row, idx: row*NCOLS + col});
     }
   }
-});
+  // ISO sort: back = small (col+row), front = large
+  cells.sort((a,b) => (a.col+a.row) - (b.col+b.row));
 
-// ── Sensor pills ──────────────────────────────────────────────────────────
-const pillsEl = document.getElementById('sensorPills');
-SENSORS.forEach((s, i) => {
-  const btn = document.createElement('button');
-  btn.className = 'pill' + (i === 0 ? ' active' : '');
-  btn.textContent = s.id;
-  btn.onclick = () => {
-    activeSensor = i;
-    document.querySelectorAll('.pill').forEach((p, j) => p.classList.toggle('active', j === i));
-    updateForecast();
-  };
-  pillsEl.appendChild(btn);
-});
+  cells.forEach(({col, row, idx}) => {
+    if (idx >= N) return;
+    const cell = cellBase[idx];
+    const isSensor = cell.sensor !== undefined;
+    const isActive = isSensor && cell.sensorIdx === activeSensor;
 
-function updateForecast() {
-  const s = SENSORS[activeSensor];
-  const base = 200 + tick * 3;
-  const history = Array.from({ length: 12 }, (_, i) => genFlow(s, base + i));
-  const future  = Array.from({ length: 12 }, (_, i) => genFlow(s, base + 12 + i));
-  const pred    = genForecast(s, future);
-  const bline   = genBaseline(s, [...history, ...future]);
+    let h, color, alpha;
 
-  // history: show truth; forecast section: show truth + prediction
-  const truthData  = [...history, ...future];
-  const predData   = [...Array(12).fill(null), ...pred];
-  const baseData   = bline;
-
-  forecastChart.data.labels = makeLabels(W);
-  forecastChart.data.datasets[0].data = truthData;
-  forecastChart.data.datasets[1].data = predData;
-  forecastChart.data.datasets[2].data = baseData;
-  forecastChart.update();
-
-  document.getElementById('chartLabel').textContent = `${s.id} — ${s.name} (mph)`;
-  document.getElementById('sensor-details').innerHTML = `
-    ID: &nbsp;&nbsp;&nbsp;&nbsp;${s.id}<br/>
-    Road: &nbsp;&nbsp;${s.name}<br/>
-    Avg:&nbsp;&nbsp;&nbsp;&nbsp;${s.avg} mph<br/>
-    Now:&nbsp;&nbsp;&nbsp;&nbsp;${history[history.length - 1]} mph<br/>
-    Pred+60: ${pred[pred.length - 1]} mph
-  `;
-}
-
-// Live update
-setInterval(() => { tick++; updateForecast(); }, 5000);
-updateForecast();
-
-// ── Network canvas (sensor graph) ─────────────────────────────────────────
-const nc = document.getElementById('network-canvas');
-nc.width  = nc.offsetWidth;
-nc.height = 340;
-const nctx = nc.getContext('2d');
-
-function drawNetwork() {
-  const W = nc.width, H = nc.height;
-  nctx.clearRect(0, 0, W, H);
-
-  const seed = rng(42);
-  const nodes = Array.from({ length: 207 }, (_, i) => ({
-    x: 40 + seed() * (W - 80),
-    y: 40 + seed() * (H - 80),
-    r: 2.5 + seed() * 4,
-    flow: 30 + seed() * 65,
-    active: i < SENSORS.length,
-  }));
-
-  // Edges (sparse)
-  nctx.lineWidth = 0.5;
-  for (let i = 0; i < nodes.length; i++) {
-    for (let j = i + 1; j < Math.min(i + 4, nodes.length); j++) {
-      const dx = nodes[i].x - nodes[j].x;
-      const dy = nodes[i].y - nodes[j].y;
-      if (Math.sqrt(dx*dx + dy*dy) < 120) {
-        nctx.beginPath();
-        nctx.moveTo(nodes[i].x, nodes[i].y);
-        nctx.lineTo(nodes[j].x, nodes[j].y);
-        nctx.strokeStyle = 'rgba(61,142,255,.1)';
-        nctx.stroke();
-      }
-    }
-  }
-
-  // Nodes
-  nodes.forEach((n, i) => {
-    const t = tick / 20;
-    const pulse = n.active ? Math.sin(t + i * 0.5) * 1.5 : 0;
-    nctx.beginPath();
-    nctx.arc(n.x, n.y, n.r + pulse, 0, Math.PI * 2);
-    if (n.active) {
-      const g = nctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r + 6);
-      g.addColorStop(0, 'rgba(110,231,183,.9)');
-      g.addColorStop(1, 'rgba(110,231,183,0)');
-      nctx.fillStyle = g;
+    if (isSensor) {
+      const s = cell.sensor;
+      const si = cell.sensorIdx;
+      // Show current flow
+      const flow = flowAt(s, 11, t);
+      h = (flow / 100) * MAX_H;
+      color = isActive ? '#00d4ff' : '#1a5f7a';
+      alpha = isActive ? 0.95 : 0.7;
     } else {
-      const alpha = 0.3 + (n.flow / 100) * 0.5;
-      nctx.fillStyle = `rgba(61,142,255,${alpha})`;
+      // Background ambient cell
+      const wave = Math.sin(now * cell.freq + cell.phase);
+      h = (cell.base + wave * 8) * 0.4;
+      color = '#0a2040';
+      alpha = 0.6;
     }
-    nctx.fill();
+
+    drawBar(col, row, h, color, alpha, cx, cy);
   });
 
-  // Active sensor labels
-  SENSORS.forEach((s, i) => {
-    const n = nodes[i];
-    nctx.fillStyle = 'rgba(110,231,183,.9)';
-    nctx.font = '10px Inter';
-    nctx.fillText(s.id, n.x + 6, n.y - 6);
-  });
-}
+  // Forecast overlay: draw ghost prediction bars floating above the active sensor's neighbors
+  if (mode === 'iso') {
+    const s = SENSOR_DATA[activeSensor];
+    for (let step = 12; step < STEPS; step++) {
+      const pred = forecastAt(s, step, t);
+      const h    = (pred / 100) * MAX_H;
+      const fade = (step - 12) / 12;
+      const col  = s.col + (step - 11);
+      const row  = s.row;
+      if (col < NCOLS) {
+        drawBar(col, row, h, '#00ff9f', 0.15 + fade * 0.3, cx, cy);
 
-setInterval(drawNetwork, 100);
-
-// ── Training curves ───────────────────────────────────────────────────────
-const epochs = Array.from({ length: 38 }, (_, i) => i + 1);
-
-function smooth(arr, factor = 0.7) {
-  let s = arr[0];
-  return arr.map(v => { s = factor * s + (1 - factor) * v; return +s.toFixed(4); });
-}
-
-const r = rng(99);
-const trainLoss = smooth(epochs.map(e => 0.9 * Math.exp(-e / 8) + 0.04 + (r() - 0.5) * 0.02));
-const valLoss   = smooth(epochs.map(e => 0.95 * Math.exp(-e / 8) + 0.05 + (r() - 0.5) * 0.025));
-const valMAE    = smooth(epochs.map(e => 6.5 * Math.exp(-e / 10) + 3.4 + (r() - 0.5) * 0.15));
-
-const commonOpts = {
-  responsive: true, maintainAspectRatio: false,
-  animation: { duration: 1200, easing: 'easeInOutQuart' },
-  plugins: {
-    legend: { labels: { color: '#64748b', font: { size: 11 }, boxWidth: 16 } },
-    tooltip: {
-      backgroundColor: '#0e1520', borderColor: 'rgba(99,160,255,.2)', borderWidth: 1, padding: 10,
-      titleColor: '#94b4e4', bodyColor: '#e2e8f0',
+        // Connecting line effect: draw thin column outline
+        const {x,y} = isoToScreen(col, row, cx, cy);
+        ctx.beginPath();
+        ctx.setLineDash([3,4]);
+        ctx.strokeStyle = `rgba(0,255,159,${0.1 + fade*0.2})`;
+        ctx.lineWidth = 0.5;
+        ctx.moveTo(x + TILE_W/2, y - TILE_H/2 - h);
+        ctx.lineTo(x + TILE_W/2, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
     }
-  },
-  scales: {
-    x: { grid: { color: 'rgba(99,160,255,.06)' }, ticks: { color: '#64748b', font: { size: 10 } } },
-    y: { grid: { color: 'rgba(99,160,255,.06)' }, ticks: { color: '#64748b', font: { size: 10 } } }
   }
-};
+}
 
-new Chart(document.getElementById('lossChart').getContext('2d'), {
-  type: 'line',
-  data: {
-    labels: epochs,
-    datasets: [
-      {
-        label: 'Train',
-        data: trainLoss,
-        borderColor: 'rgba(61,142,255,1)',
-        backgroundColor: 'rgba(61,142,255,.06)',
-        fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0,
-      },
-      {
-        label: 'Val',
-        data: valLoss,
-        borderColor: 'rgba(110,231,183,1)',
-        backgroundColor: 'rgba(110,231,183,.04)',
-        fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0,
-      }
-    ]
-  },
-  options: commonOpts,
-});
+// ── Draw waveform scene ───────────────────────────────────────────────────
+function drawWave() {
+  const {cx} = getOrigin();
+  const W = canvas.width;
+  const H = canvas.height;
+  const TOP    = 54;
+  const BOTTOM = H - 44;
+  const LEFT   = 230;
+  const RIGHT  = W - 260;
+  const useW   = RIGHT - LEFT;
+  const useH   = BOTTOM - TOP;
 
-new Chart(document.getElementById('maeChart').getContext('2d'), {
-  type: 'line',
-  data: {
-    labels: epochs,
-    datasets: [{
-      label: 'Val MAE',
-      data: valMAE,
-      borderColor: 'rgba(249,115,22,1)',
-      backgroundColor: 'rgba(249,115,22,.06)',
-      fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0,
-    }]
-  },
-  options: {
-    ...commonOpts,
-    plugins: {
-      ...commonOpts.plugins,
-      annotation: {
-        annotations: {
-          bestLine: {
-            type: 'line', yMin: 3.47, yMax: 3.47,
-            borderColor: 'rgba(110,231,183,.5)', borderDash: [4, 3], borderWidth: 1.5,
-          }
-        }
-      }
+  const stepW = useW / STEPS;
+  const now = Date.now() / 1000;
+
+  // Draw each sensor as a horizontal waveform strip
+  SENSOR_DATA.forEach((s, si) => {
+    const stripH = (useH - 40) / SENSOR_DATA.length;
+    const stripY = TOP + 20 + si * stripH;
+    const midY   = stripY + stripH / 2;
+
+    // Label
+    ctx.fillStyle = si === activeSensor ? '#00d4ff' : '#3a5568';
+    ctx.font = `${si === activeSensor ? '700' : '400'} 10px Space Mono`;
+    ctx.fillText(s.id, LEFT + 4, midY - stripH/2 + 14);
+
+    // Baseline
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(0,212,255,.06)';
+    ctx.lineWidth = 1;
+    ctx.moveTo(LEFT, midY);
+    ctx.lineTo(RIGHT, midY);
+    ctx.stroke();
+
+    // History wave
+    ctx.beginPath();
+    for (let step = 0; step < 12; step++) {
+      const flow = flowAt(s, step, t);
+      const x = LEFT + step * stepW + stepW/2;
+      const y = midY - (flow / 100) * (stripH * 0.42);
+      step === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
     }
-  },
+    ctx.strokeStyle = si === activeSensor ? 'rgba(0,212,255,.9)' : 'rgba(0,212,255,.3)';
+    ctx.lineWidth = si === activeSensor ? 2 : 1;
+    ctx.stroke();
+
+    // Now marker line
+    const nowX = LEFT + 12 * stepW;
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(255,183,0,.4)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4,4]);
+    ctx.moveTo(nowX, TOP + 20);
+    ctx.lineTo(nowX, BOTTOM - 10);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Forecast wave
+    ctx.beginPath();
+    for (let step = 12; step < STEPS; step++) {
+      const pred = forecastAt(s, step, t);
+      const x = LEFT + step * stepW + stepW/2;
+      const y = midY - (pred / 100) * (stripH * 0.42);
+      step === 12 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle = si === activeSensor ? 'rgba(0,255,159,.9)' : 'rgba(0,255,159,.25)';
+    ctx.lineWidth = si === activeSensor ? 2 : 1;
+    ctx.setLineDash([5,3]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Flow fill (active only)
+    if (si === activeSensor) {
+      ctx.beginPath();
+      ctx.moveTo(LEFT, midY);
+      for (let step = 0; step < 12; step++) {
+        const flow = flowAt(s, step, t);
+        const x = LEFT + step * stepW + stepW/2;
+        const y = midY - (flow/100)*(stripH*.42);
+        ctx.lineTo(x,y);
+      }
+      ctx.lineTo(LEFT + 12*stepW, midY);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(0,212,255,.06)';
+      ctx.fill();
+    }
+  });
+
+  // Time axis labels
+  ctx.fillStyle = '#3a5568';
+  ctx.font = '9px Space Mono';
+  const now2 = new Date();
+  for (let step = 0; step < STEPS; step++) {
+    const d = new Date(now2.getTime() + (step - 11) * 5 * 60000);
+    const lbl = d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    const x = LEFT + step * stepW + stepW/2;
+    ctx.fillText(lbl, x - 14, BOTTOM - 6);
+  }
+
+  // Divider label
+  ctx.fillStyle = 'rgba(255,183,0,.7)';
+  ctx.font = '9px Space Mono';
+  ctx.fillText('NOW', LEFT + 12*stepW - 14, TOP + 14);
+}
+
+// ── Particles (road network feel) ────────────────────────────────────────
+const particles = Array.from({length: 80}, (_,i) => {
+  const r = rng(i * 997);
+  return {
+    x: r() * 1.0, y: r() * 1.0,
+    vx: (r() - 0.5) * 0.003, vy: (r() - 0.5) * 0.002,
+    life: r(), col: r() > 0.7 ? '#00ff9f' : '#00d4ff', alpha: r() * 0.4
+  };
 });
+
+function drawParticles() {
+  const {cx} = getOrigin();
+  const LEFT = 230, RIGHT = canvas.width - 260;
+  const TOP = 54, BOTTOM = canvas.height - 44;
+  const W = RIGHT - LEFT, H = BOTTOM - TOP;
+
+  particles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life += 0.004;
+    if (p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1) {
+      p.x = Math.random(); p.y = Math.random();
+      p.life = 0;
+    }
+    const screenX = LEFT + p.x * W;
+    const screenY = TOP  + p.y * H;
+    const fade = Math.sin(p.life * Math.PI) * p.alpha;
+    ctx.beginPath();
+    ctx.arc(screenX, screenY, 1.2, 0, Math.PI*2);
+    ctx.fillStyle = p.col.replace(')', `,${fade})`).replace('rgb','rgba').replace('#00','rgba(0,');
+    // Simpler:
+    if (p.col === '#00ff9f') ctx.fillStyle = `rgba(0,255,159,${fade})`;
+    else ctx.fillStyle = `rgba(0,212,255,${fade})`;
+    ctx.fill();
+  });
+}
+
+// ── Hex grid background ───────────────────────────────────────────────────
+function drawBackground() {
+  ctx.fillStyle = '#030609';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Subtle dot grid
+  ctx.fillStyle = 'rgba(0,212,255,.04)';
+  const GRID = 32;
+  for (let x = 0; x < canvas.width; x += GRID) {
+    for (let y = 0; y < canvas.height; y += GRID) {
+      ctx.beginPath();
+      ctx.arc(x, y, 0.8, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+}
+
+// ── HUD clock ─────────────────────────────────────────────────────────────
+function updateHUD() {
+  const now = new Date();
+  document.getElementById('global-time').textContent =
+    now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+
+  const avgFlow = Math.round(
+    SENSOR_DATA.reduce((s,sen) => s + flowAt(sen, 11, t), 0) / SENSOR_DATA.length
+  );
+  document.getElementById('global-flow').textContent = avgFlow;
+}
+
+// ── Sensor list ───────────────────────────────────────────────────────────
+function buildSensorList() {
+  const list = document.getElementById('sensorList');
+  SENSOR_DATA.forEach((s,i) => {
+    const row = document.createElement('div');
+    row.className = 'sensor-row' + (i === 0 ? ' active' : '');
+    row.id = 'srow-'+i;
+    row.onclick = () => selectSensor(i);
+
+    const colors = ['#00d4ff','#00ff9f','#ffb700','#ff4560','#a78bfa'];
+    row.innerHTML = `
+      <div class="sensor-indicator" style="background:${colors[i]};color:${colors[i]};"></div>
+      <div>
+        <div class="sensor-name">${s.id}</div>
+        <div class="flow-bar-wrap"><div class="flow-bar" id="fbar-${i}" style="background:${colors[i]};width:60%;"></div></div>
+      </div>
+      <div class="sensor-val" id="sval-${i}">--</div>
+    `;
+    list.appendChild(row);
+  });
+}
+
+function updateSensorList() {
+  SENSOR_DATA.forEach((s,i) => {
+    const flow = flowAt(s, 11, t);
+    const el = document.getElementById('sval-'+i);
+    const bar = document.getElementById('fbar-'+i);
+    if (el) el.textContent = flow + ' mph';
+    if (bar) bar.style.width = Math.round((flow/100)*100)+'%';
+  });
+}
+
+function selectSensor(i) {
+  activeSensor = i;
+  document.querySelectorAll('.sensor-row').forEach((r,j) => r.classList.toggle('active', j===i));
+  updateDetailPanel();
+  updateSparkline();
+}
+
+function updateDetailPanel() {
+  const s = SENSOR_DATA[activeSensor];
+  const flow = flowAt(s, 11, t);
+  const pred = forecastAt(s, 23, t);
+  document.getElementById('sensorDetail').innerHTML =
+    `ID:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${s.id}<br/>
+     Road:&nbsp;&nbsp;&nbsp;${s.road}<br/>
+     Avg:&nbsp;&nbsp;&nbsp;&nbsp;${s.avg} mph<br/>
+     Now:&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--blue)">${flow} mph</span><br/>
+     +60min: <span style="color:var(--green)">${pred} mph</span>`;
+}
+
+// ── Sparkline ─────────────────────────────────────────────────────────────
+function updateSparkline() {
+  const sc = document.getElementById('sparkCanvas');
+  sc.width  = sc.offsetWidth * window.devicePixelRatio;
+  sc.height = 60 * window.devicePixelRatio;
+  const sctx = sc.getContext('2d');
+  sctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+  const W = sc.offsetWidth, H = 60;
+  sctx.clearRect(0,0,W,H);
+  const s = SENSOR_DATA[activeSensor];
+
+  const vals = Array.from({length:STEPS}, (_,i) =>
+    i < 12 ? flowAt(s,i,t) : forecastAt(s,i,t)
+  );
+  const mn = Math.min(...vals) - 5;
+  const mx = Math.max(...vals) + 5;
+  const scaleY = v => H - ((v - mn)/(mx - mn)) * (H - 8) - 4;
+
+  // History fill
+  sctx.beginPath();
+  sctx.moveTo(0, H);
+  for (let i=0;i<12;i++) { sctx.lineTo((i/(STEPS-1))*W, scaleY(vals[i])); }
+  sctx.lineTo((11/(STEPS-1))*W, H);
+  sctx.closePath();
+  sctx.fillStyle = 'rgba(0,212,255,.08)';
+  sctx.fill();
+
+  // History line
+  sctx.beginPath();
+  for (let i=0;i<12;i++) {
+    i===0 ? sctx.moveTo(0, scaleY(vals[i])) : sctx.lineTo((i/(STEPS-1))*W, scaleY(vals[i]));
+  }
+  sctx.strokeStyle = '#00d4ff';
+  sctx.lineWidth = 1.5;
+  sctx.stroke();
+
+  // Forecast line
+  sctx.beginPath();
+  sctx.setLineDash([4,3]);
+  for (let i=11;i<STEPS;i++) {
+    const x = (i/(STEPS-1))*W;
+    i===11 ? sctx.moveTo(x, scaleY(vals[i])) : sctx.lineTo(x, scaleY(vals[i]));
+  }
+  sctx.strokeStyle = '#00ff9f';
+  sctx.lineWidth = 1.5;
+  sctx.stroke();
+  sctx.setLineDash([]);
+
+  // Now marker
+  const nowX = (11/(STEPS-1))*W;
+  sctx.beginPath();
+  sctx.moveTo(nowX, 0); sctx.lineTo(nowX, H);
+  sctx.strokeStyle = 'rgba(255,183,0,.5)';
+  sctx.lineWidth = 1;
+  sctx.setLineDash([3,3]);
+  sctx.stroke();
+  sctx.setLineDash([]);
+}
+
+// ── Main render loop ──────────────────────────────────────────────────────
+let lastHUDUpdate = 0;
+let lastSparkUpdate = 0;
+
+function frame(ts) {
+  t = ts / 1000;
+
+  drawBackground();
+  if (mode === 'iso') {
+    drawISO();
+  } else {
+    drawWave();
+  }
+  drawParticles();
+
+  if (ts - lastHUDUpdate > 1000) {
+    updateHUD();
+    updateSensorList();
+    updateDetailPanel();
+    lastHUDUpdate = ts;
+  }
+  if (ts - lastSparkUpdate > 2000) {
+    updateSparkline();
+    lastSparkUpdate = ts;
+  }
+
+  requestAnimationFrame(frame);
+}
+
+// ── Click to select sensors on canvas ────────────────────────────────────
+canvas.addEventListener('click', (e) => {
+  if (mode !== 'iso') return;
+  const {cx, cy} = getOrigin();
+  SENSOR_DATA.forEach((s, si) => {
+    const {x, y} = isoToScreen(s.col, s.row, cx, cy);
+    const dx = e.clientX - (x + TILE_W/2);
+    const dy = e.clientY - (y - 30);
+    if (Math.sqrt(dx*dx+dy*dy) < 28) { selectSensor(si); }
+  });
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+buildSensorList();
+updateSparkline();
+requestAnimationFrame(frame);
 </script>
 </body>
 </html>
