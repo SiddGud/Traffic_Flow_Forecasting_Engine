@@ -98,8 +98,8 @@ data/
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/urban-traffic-forecasting.git
-cd urban-traffic-forecasting
+git clone https://github.com/SiddGud/Traffic_Flow_Forecasting_Engine.git
+cd Traffic_Flow_Forecasting_Engine
 
 # 2. Create and activate a virtual environment
 python -m venv .venv
