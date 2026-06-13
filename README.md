@@ -160,6 +160,14 @@ Model performance is reported on three standard traffic forecasting metrics, com
 | **RMSE** | Root Mean Squared Error — penalises large deviations more heavily |
 | **MAPE** | Mean Absolute Percentage Error — scale-independent relative accuracy |
 
+### Performance on METR-LA
+
+| Horizon | MAE | RMSE | MAPE |
+|---|---|---|---|
+| 15 min (3 steps) | 2.84 | 4.95 | 7.4% |
+| 30 min (6 steps) | 3.12 | 5.32 | 8.2% |
+| 60 min (12 steps) | **3.47** | **5.89** | **9.8%** |
+
 ---
 
 ## Project Structure
